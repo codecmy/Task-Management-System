@@ -717,6 +717,26 @@ button:hover,
   gap: 10px;
 }
 
+.socket-status {
+  align-items: center;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  gap: 4px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.socket-status::before {
+  background: var(--danger);
+  border-radius: 999px;
+  content: "";
+  height: 7px;
+  width: 7px;
+}
+.socket-status.connected::before {
+  background: var(--success);
+}
+
 @media (max-width: 900px) {
   .auth-layout,
   .workspace-grid {

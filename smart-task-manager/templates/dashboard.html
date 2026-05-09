@@ -8,14 +8,14 @@
       <div>
         <span class="eyebrow">Workspace</span>
         <h1>Work dashboard</h1>
-        <p class="muted">{{ stats.total }} items tracked, {{ stats.todo }} active, {{ stats.done }} completed</p>
+        <p class="muted" id="dashboard-subtitle">{{ stats.total }} items tracked, {{ stats.todo }} active, {{ stats.done }} completed</p>
       </div>
       <blockquote class="dashboard-quote">
         <p>Decide once. Execute calmly.</p>
       </blockquote>
     </div>
 
-    <div class="insight-panel">
+    <div class="insight-panel" id="insight-panel">
       <div>
         <span class="eyebrow">Operational insight</span>
         <h2>{{ insights.completion_rate }}% completion rate</h2>
@@ -28,7 +28,7 @@
       </div>
     </div>
 
-    <div class="stats-grid">
+    <div class="stats-grid" id="stats-grid">
       <div>
         <span>Portfolio</span>
         <strong>{{ stats.total }}</strong>
@@ -84,9 +84,14 @@
           <a class="button secondary" href="{{ url_for('dashboard') }}">Clear</a>
         </form>
 
-        <div class="task-list">
+        <div class="task-list" id="task-list">
           {% for task in tasks %}
-            <article class="task {{ 'done' if task.is_done else '' }} priority-{{ task.priority }}">
+            <article class="task {{ 'done' if task.is_done else '' }} priority-{{ task.priority }}"
+                     data-task-id="{{ task.id }}"
+                     data-status="{{ task.status }}"
+                     data-priority="{{ task.priority }}"
+                     data-due-date="{{ task.due_date.isoformat() if task.due_date else '' }}"
+                     data-created-at="{{ task.created_at.isoformat() }}">
               <div class="task-body">
                 <div class="task-title-row">
                   <h2>{{ task.title }}</h2>
@@ -113,7 +118,7 @@
               </div>
             </article>
           {% else %}
-            <p class="empty-state">Your workspace is clear.</p>
+            <p class="empty-state" id="empty-state">Your workspace is clear.</p>
           {% endfor %}
         </div>
       </div>

@@ -19,6 +19,7 @@
             <a href="{{ url_for('analytics_view') }}">Analytics</a>
             <span class="user-pill">{{ current_user.name[:1]|upper }}</span>
             <span class="user-name">{{ current_user.name }}</span>
+            <span class="socket-status disconnected" id="socket-status"></span>
             <form action="{{ url_for('logout') }}" method="post">
               <button class="link-button" type="submit">Logout</button>
             </form>
@@ -44,6 +45,8 @@
       </main>
     </div>
 
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/socket.js') }}"></script>
   </body>
 </html>

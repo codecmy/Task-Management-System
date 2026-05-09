@@ -9,6 +9,7 @@ from sqlalchemy import case, inspect, or_, text
 
 from config import Config
 from extensions import db, login_manager, socketio
+from flask_socketio import join_room, leave_room
 
 
 def create_app():
@@ -158,6 +159,30 @@ def create_app():
             "updated_at": task.updated_at.isoformat(),
         }
 
+    def emit_user_event(event, task_dict=None):
+        tasks = Task.query.filter_by(user_id=current_user.id).all()
+        stats = {
+            "total": len(tasks),
+            "todo": sum(1 for t in tasks if t.status == TaskStatus.TODO.value),
+            "done": sum(1 for t in tasks if t.status == TaskStatus.DONE.value),
+            "high": sum(1 for t in tasks if t.priority == TaskPriority.HIGH.value),
+        }
+        insights = build_task_insights(tasks)
+        payload = {"stats": stats, "insights": insights}
+        if task_dict is not None:
+            payload["task"] = task_dict
+        socketio.emit(event, payload, room=str(current_user.id))
+
+    @socketio.on("connect")
+    def handle_connect():
+        if current_user.is_authenticated:
+            join_room(str(current_user.id))
+
+    @socketio.on("disconnect")
+    def handle_disconnect():
+        if current_user.is_authenticated:
+            leave_room(str(current_user.id))
+
     @app.route("/")
     def index():
         if current_user.is_authenticated:
@@ -231,7 +256,7 @@ def create_app():
             task = Task(**form_data, user_id=current_user.id)
             db.session.add(task)
             db.session.commit()
-            socketio.emit("task_created", {"title": task.title, "user_id": current_user.id})
+            emit_user_event("task_created", task_to_dict(task))
             flash("Task added.", "success")
             return redirect(url_for("dashboard"))
 
@@ -289,6 +314,7 @@ def create_app():
         task = Task.query.filter_by(id=task_id, user_id=current_user.id).first_or_404()
         task.status = TaskStatus.TODO.value if task.is_done else TaskStatus.DONE.value
         db.session.commit()
+        emit_user_event("task_updated", task_to_dict(task))
         flash("Task updated.", "success")
         return redirect(url_for("dashboard"))
 
@@ -309,6 +335,7 @@ def create_app():
             task.due_date = form_data["due_date"]
             task.priority = form_data["priority"]
             db.session.commit()
+            emit_user_event("task_updated", task_to_dict(task))
             flash("Task updated.", "success")
             return redirect(url_for("dashboard"))
 
@@ -346,8 +373,10 @@ def create_app():
     @login_required
     def delete_task(task_id):
         task = Task.query.filter_by(id=task_id, user_id=current_user.id).first_or_404()
+        task_dict = task_to_dict(task)
         db.session.delete(task)
         db.session.commit()
+        emit_user_event("task_deleted", task_dict)
         flash("Task deleted.", "success")
         return redirect(url_for("dashboard"))
 
@@ -374,7 +403,7 @@ def create_app():
         )
         db.session.add(task)
         db.session.commit()
-        socketio.emit("task_created", {"title": task.title, "user_id": current_user.id})
+        emit_user_event("task_created", task_to_dict(task))
         return jsonify({"message": "Task added", "task": task_to_dict(task)}), 201
 
     @app.route("/tasks", methods=["GET"])
@@ -454,6 +483,7 @@ def create_app():
                 return jsonify({"error": str(error)}), 400
 
         db.session.commit()
+        emit_user_event("task_updated", task_to_dict(task))
         return jsonify({"message": "Task updated", "task": task_to_dict(task)})
 
     @app.route("/tasks/<int:task_id>", methods=["DELETE"])
@@ -463,8 +493,10 @@ def create_app():
         if not task:
             return jsonify({"error": "Task not found"}), 404
 
+        task_dict = task_to_dict(task)
         db.session.delete(task)
         db.session.commit()
+        emit_user_event("task_deleted", task_dict)
         return jsonify({"message": "Task deleted"})
 
     # ─── Analytics routes ───────────────────────────────────────────
