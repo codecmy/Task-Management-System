@@ -3,7 +3,7 @@ from io import StringIO
 from pathlib import Path
 
 import pandas as pd
-from flask import Flask, Response, flash, redirect, render_template, request, url_for
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import case, inspect, or_, text
 
@@ -25,6 +25,12 @@ def create_app():
     login_manager.login_message_category = "warning"
 
     from models import Task, TaskPriority, TaskStatus, User
+
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        if request.endpoint and request.endpoint.startswith("api_"):
+            return jsonify({"error": "Authentication required"}), 401
+        return redirect(url_for("login"))
 
     def parse_due_date(value):
         value = value.strip()
@@ -54,6 +60,58 @@ def create_app():
             "due_date": due_date,
             "priority": priority,
         }
+
+    def get_json_payload():
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            raise ValueError("Request body must be JSON")
+        return data
+
+    def normalize_optional_text(value, field_name):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError(f"{field_name} must be text")
+        return value.strip() or None
+
+    def normalize_required_text(value, field_name):
+        if not isinstance(value, str):
+            raise ValueError(f"{field_name} must be text")
+        value = value.strip()
+        if not value:
+            raise ValueError(f"{field_name} is required")
+        return value
+
+    def normalize_priority(value):
+        if value is None:
+            value = TaskPriority.MEDIUM.value
+        if not isinstance(value, str):
+            raise ValueError("Priority must be text")
+        priority = value.strip().lower()
+        if priority not in {item.value for item in TaskPriority}:
+            raise ValueError("Choose a valid priority.")
+        return priority
+
+    def normalize_status(value):
+        if not isinstance(value, str):
+            raise ValueError("Status must be text")
+        status = value.strip().lower()
+        if status not in {TaskStatus.TODO.value, TaskStatus.DONE.value}:
+            raise ValueError("Status must be 'todo' or 'done'.")
+        return status
+
+    def normalize_due_date(value):
+        if value is None or value == "":
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Due date must be text in YYYY-MM-DD format")
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("Use a valid due date (YYYY-MM-DD).") from None
 
     def build_task_insights(tasks):
         today = date.today()
@@ -85,6 +143,18 @@ def create_app():
             "due_soon": len(due_soon),
             "overdue": len(overdue),
             "recommendation": recommendation,
+        }
+
+    def task_to_dict(task):
+        return {
+            "id": task.id,
+            "title": task.title,
+            "description": task.description,
+            "status": task.status,
+            "priority": task.priority,
+            "due_date": task.due_date.isoformat() if task.due_date else None,
+            "created_at": task.created_at.isoformat(),
+            "updated_at": task.updated_at.isoformat(),
         }
 
     @app.route("/")
@@ -279,6 +349,122 @@ def create_app():
         db.session.commit()
         flash("Task deleted.", "success")
         return redirect(url_for("dashboard"))
+
+    # REST API routes
+
+    @app.route("/tasks", methods=["POST"])
+    @login_required
+    def api_add_task():
+        try:
+            data = get_json_payload()
+            title = normalize_required_text(data.get("title"), "Task title")
+            description = normalize_optional_text(data.get("description"), "Description")
+            priority = normalize_priority(data.get("priority"))
+            due_date = normalize_due_date(data.get("due_date"))
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+
+        task = Task(
+            title=title,
+            description=description,
+            priority=priority,
+            due_date=due_date,
+            user_id=current_user.id,
+        )
+        db.session.add(task)
+        db.session.commit()
+        socketio.emit("task_created", {"title": task.title, "user_id": current_user.id})
+        return jsonify({"message": "Task added", "task": task_to_dict(task)}), 201
+
+    @app.route("/tasks", methods=["GET"])
+    @login_required
+    def api_get_tasks():
+        status_filter = request.args.get("status", "all").lower()
+        priority_filter = request.args.get("priority", "all").lower()
+        search = request.args.get("q", "").strip()
+        task_query = Task.query.filter_by(user_id=current_user.id)
+
+        if status_filter in {TaskStatus.TODO.value, TaskStatus.DONE.value}:
+            task_query = task_query.filter_by(status=status_filter)
+
+        if priority_filter in {priority.value for priority in TaskPriority}:
+            task_query = task_query.filter_by(priority=priority_filter)
+
+        if search:
+            pattern = f"%{search}%"
+            task_query = task_query.filter(
+                or_(Task.title.ilike(pattern), Task.description.ilike(pattern))
+            )
+
+        tasks = task_query.order_by(
+            case((Task.status == TaskStatus.TODO.value, 0), else_=1),
+            case(
+                (Task.priority == TaskPriority.HIGH.value, 0),
+                (Task.priority == TaskPriority.MEDIUM.value, 1),
+                else_=2,
+            ),
+            Task.due_date.is_(None),
+            Task.due_date.asc(),
+            Task.created_at.desc(),
+        ).all()
+
+        return jsonify({"tasks": [task_to_dict(t) for t in tasks]})
+
+    @app.route("/tasks/<int:task_id>", methods=["PUT"])
+    @login_required
+    def api_update_task(task_id):
+        task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+
+        try:
+            data = get_json_payload()
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+
+        if "title" in data:
+            try:
+                task.title = normalize_required_text(data["title"], "Task title")
+            except ValueError as error:
+                return jsonify({"error": str(error)}), 400
+
+        if "description" in data:
+            try:
+                task.description = normalize_optional_text(data.get("description"), "Description")
+            except ValueError as error:
+                return jsonify({"error": str(error)}), 400
+
+        if "priority" in data:
+            try:
+                task.priority = normalize_priority(data["priority"])
+            except ValueError as error:
+                return jsonify({"error": str(error)}), 400
+
+        if "due_date" in data:
+            try:
+                task.due_date = normalize_due_date(data["due_date"])
+            except ValueError as error:
+                return jsonify({"error": str(error)}), 400
+
+        if "status" in data:
+            try:
+                task.status = normalize_status(data["status"])
+            except ValueError as error:
+                return jsonify({"error": str(error)}), 400
+
+        db.session.commit()
+        return jsonify({"message": "Task updated", "task": task_to_dict(task)})
+
+    @app.route("/tasks/<int:task_id>", methods=["DELETE"])
+    @login_required
+    def api_delete_task(task_id):
+        task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+
+        db.session.delete(task)
+        db.session.commit()
+        return jsonify({"message": "Task deleted"})
 
     with app.app_context():
         db.create_all()
