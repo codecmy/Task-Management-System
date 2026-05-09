@@ -15,6 +15,19 @@
       </blockquote>
     </div>
 
+    <div class="insight-panel">
+      <div>
+        <span class="eyebrow">Operational insight</span>
+        <h2>{{ insights.completion_rate }}% completion rate</h2>
+        <p>{{ insights.recommendation }}</p>
+      </div>
+      <div class="insight-metrics">
+        <span>{{ insights.overdue }} overdue</span>
+        <span>{{ insights.due_soon }} due this week</span>
+        <a class="button secondary compact" href="{{ url_for('export_tasks') }}">Export CSV</a>
+      </div>
+    </div>
+
     <div class="stats-grid">
       <div>
         <span>Portfolio</span>

@@ -1,7 +1,9 @@
-from datetime import datetime
+from datetime import date, datetime, timedelta
+from io import StringIO
 from pathlib import Path
 
-from flask import Flask, flash, redirect, render_template, request, url_for
+import pandas as pd
+from flask import Flask, Response, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy import case, inspect, or_, text
 
@@ -51,6 +53,38 @@ def create_app():
             "description": description or None,
             "due_date": due_date,
             "priority": priority,
+        }
+
+    def build_task_insights(tasks):
+        today = date.today()
+        upcoming_limit = today + timedelta(days=7)
+        active_tasks = [task for task in tasks if task.status == TaskStatus.TODO.value]
+        overdue = [
+            task for task in active_tasks if task.due_date is not None and task.due_date < today
+        ]
+        due_soon = [
+            task
+            for task in active_tasks
+            if task.due_date is not None and today <= task.due_date <= upcoming_limit
+        ]
+        completion_rate = round(
+            (sum(1 for task in tasks if task.status == TaskStatus.DONE.value) / len(tasks)) * 100
+        ) if tasks else 0
+
+        if overdue:
+            recommendation = "Start with overdue work before taking on anything new."
+        elif due_soon:
+            recommendation = "Your next seven days have movement. Review dates before adding more."
+        elif active_tasks:
+            recommendation = "You have active work without urgent deadlines. Choose one clear next action."
+        else:
+            recommendation = "Your workspace is clear. Capture the next important outcome."
+
+        return {
+            "completion_rate": completion_rate,
+            "due_soon": len(due_soon),
+            "overdue": len(overdue),
+            "recommendation": recommendation,
         }
 
     @app.route("/")
@@ -166,9 +200,11 @@ def create_app():
             "done": sum(1 for task in all_user_tasks if task.status == TaskStatus.DONE.value),
             "high": sum(1 for task in all_user_tasks if task.priority == TaskPriority.HIGH.value),
         }
+        insights = build_task_insights(all_user_tasks)
 
         return render_template(
             "dashboard.html",
+            insights=insights,
             priority_filter=priority_filter,
             search=search,
             stats=stats,
@@ -206,6 +242,34 @@ def create_app():
             return redirect(url_for("dashboard"))
 
         return render_template("edit_task.html", task=task)
+
+    @app.route("/tasks/export.csv")
+    @login_required
+    def export_tasks():
+        tasks = (
+            Task.query.filter_by(user_id=current_user.id)
+            .order_by(Task.created_at.desc())
+            .all()
+        )
+        rows = [
+            {
+                "title": task.title,
+                "description": task.description or "",
+                "priority": task.priority,
+                "status": task.status,
+                "due_date": task.due_date.isoformat() if task.due_date else "",
+                "created_at": task.created_at.isoformat(),
+                "updated_at": task.updated_at.isoformat(),
+            }
+            for task in tasks
+        ]
+        output = StringIO()
+        pd.DataFrame(rows).to_csv(output, index=False)
+        return Response(
+            output.getvalue(),
+            headers={"Content-Disposition": "attachment; filename=smart_tasks.csv"},
+            mimetype="text/csv",
+        )
 
     @app.route("/tasks/<int:task_id>/delete", methods=["POST"])
     @login_required
