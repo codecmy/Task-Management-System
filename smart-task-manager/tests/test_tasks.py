@@ -43,6 +43,20 @@ def test_edit_task_updates(auth):
     assert b"Updated title" in resp.data
 
 
+def test_edit_task_invalid_priority(auth):
+    create_task(auth)
+    task_id = get_task_id(auth)
+    assert task_id is not None
+    resp = auth.post(f"/tasks/{task_id}/edit", data={
+        "title": "Nope",
+        "priority": "invalid",
+        "due_date": "",
+        "description": "",
+    }, follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"valid priority" in resp.data.lower()
+
+
 def test_delete_task(auth):
     create_task(auth)
     task_id = get_task_id(auth)

@@ -31,3 +31,13 @@ def auth(client):
         "password": "password123",
     })
     return client
+
+
+@pytest.fixture
+def second_client(app):
+    return app.test_client()
+
+
+@pytest.fixture
+def unauth_client(app):
+    return app.test_client()

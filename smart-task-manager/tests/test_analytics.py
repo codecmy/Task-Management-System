@@ -1,3 +1,6 @@
+from datetime import date, timedelta
+
+
 def test_analytics_page_loads(auth):
     resp = auth.get("/analytics")
     assert resp.status_code == 200
@@ -70,6 +73,41 @@ def test_api_analytics_partial_completion(auth):
 def test_api_analytics_unauthenticated(client):
     resp = client.get("/api/analytics")
     assert resp.status_code == 401
+
+
+def test_analytics_overdue_calculation(auth):
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    auth.post("/tasks", json={"title": "Overdue task", "due_date": yesterday})
+    data = auth.get("/api/analytics").get_json()
+    assert data["overdue"] == 1
+    assert data["due_soon"] == 0
+
+
+def test_analytics_due_soon_calculation(auth):
+    soon = (date.today() + timedelta(days=3)).isoformat()
+    auth.post("/tasks", json={"title": "Soon task", "due_date": soon})
+    data = auth.get("/api/analytics").get_json()
+    assert data["due_soon"] == 1
+    assert data["overdue"] == 0
+
+
+def test_dashboard_insight_recommendations(auth):
+    resp = auth.get("/dashboard")
+    assert b"Capture the next important outcome" in resp.data
+
+    auth.post("/tasks", json={"title": "Active task"})
+    resp = auth.get("/dashboard")
+    assert b"active work without urgent deadlines" in resp.data
+
+    soon = (date.today() + timedelta(days=3)).isoformat()
+    auth.post("/tasks", json={"title": "Soon task", "due_date": soon})
+    resp = auth.get("/dashboard")
+    assert b"next seven days" in resp.data
+
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    auth.post("/tasks", json={"title": "Overdue task", "due_date": yesterday})
+    resp = auth.get("/dashboard")
+    assert b"overdue work" in resp.data
 
 
 def test_analytics_module_directly():

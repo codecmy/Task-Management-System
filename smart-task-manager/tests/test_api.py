@@ -128,6 +128,13 @@ def test_api_update_task_invalid_status(auth):
     assert resp.status_code == 400
 
 
+def test_api_update_task_non_json_body(auth):
+    created = auth.post("/tasks", json={"title": "Test"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}", data="not json", content_type="application/json")
+    assert resp.status_code == 400
+
+
 def test_api_delete_task(auth):
     created = auth.post("/tasks", json={"title": "Delete me"}).get_json()
     tid = created["task"]["id"]
@@ -141,3 +148,54 @@ def test_api_delete_task(auth):
 def test_api_delete_task_not_found(auth):
     resp = auth.delete("/tasks/99999")
     assert resp.status_code == 404
+
+
+def test_api_get_tasks_filter_by_priority(auth):
+    auth.post("/tasks", json={"title": "High", "priority": "high"})
+    auth.post("/tasks", json={"title": "Low", "priority": "low"})
+    resp = auth.get("/tasks?priority=high")
+    tasks = resp.get_json()["tasks"]
+    assert len(tasks) == 1
+    assert tasks[0]["title"] == "High"
+
+
+def test_api_update_task_invalid_title_empty(auth):
+    created = auth.post("/tasks", json={"title": "Original"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}", json={"title": ""})
+    assert resp.status_code == 400
+
+
+def test_api_update_task_invalid_priority(auth):
+    created = auth.post("/tasks", json={"title": "Original"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}", json={"priority": "urgent"})
+    assert resp.status_code == 400
+
+
+def test_api_update_task_invalid_due_date(auth):
+    created = auth.post("/tasks", json={"title": "Original"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}", json={"due_date": "bad-date"})
+    assert resp.status_code == 400
+
+
+def test_api_unauthorized_on_post(unauth_client):
+    resp = unauth_client.post("/tasks", json={"title": "Nope"})
+    assert resp.status_code == 401
+    assert resp.is_json
+    assert resp.get_json()["error"] == "Authentication required"
+
+
+def test_api_unauthorized_on_put(unauth_client):
+    resp = unauth_client.put("/tasks/1", json={"title": "Nope"})
+    assert resp.status_code == 401
+    assert resp.is_json
+    assert resp.get_json()["error"] == "Authentication required"
+
+
+def test_api_unauthorized_on_delete(unauth_client):
+    resp = unauth_client.delete("/tasks/1")
+    assert resp.status_code == 401
+    assert resp.is_json
+    assert resp.get_json()["error"] == "Authentication required"

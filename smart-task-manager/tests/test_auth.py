@@ -43,6 +43,7 @@ def test_login_success(client):
     client.post("/register", data={
         "name": "Alice", "email": "alice@test.com", "password": "secret",
     })
+    client.post("/logout")
     resp = client.post("/login", data={
         "email": "alice@test.com", "password": "secret",
     }, follow_redirects=True)
@@ -74,5 +75,29 @@ def test_already_logged_in_redirects_away(client):
         "name": "Alice", "email": "alice@test.com", "password": "secret",
     })
     resp = client.get("/register", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Logout" in resp.data
+
+
+def test_index_redirects_authenticated(auth):
+    resp = auth.get("/", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Work dashboard" in resp.data
+
+
+def test_index_redirects_unauthenticated(client):
+    resp = client.get("/", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Sign in" in resp.data
+
+
+def test_login_already_authenticated_redirects(auth):
+    resp = auth.get("/login", follow_redirects=True)
+    assert resp.status_code == 200
+    assert b"Logout" in resp.data
+
+
+def test_register_already_authenticated_redirects(auth):
+    resp = auth.get("/register", follow_redirects=True)
     assert resp.status_code == 200
     assert b"Logout" in resp.data

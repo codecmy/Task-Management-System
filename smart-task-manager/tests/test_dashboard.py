@@ -35,6 +35,22 @@ def test_create_task_missing_title(auth):
     assert b"required" in resp.data or b"title" in resp.data.lower()
 
 
+def test_create_task_invalid_due_date(auth):
+    resp = auth.post("/dashboard", data={
+        "title": "Bad date",
+        "due_date": "not-a-date",
+    }, follow_redirects=True)
+    assert b"valid due date" in resp.data.lower()
+
+
+def test_create_task_invalid_priority(auth):
+    resp = auth.post("/dashboard", data={
+        "title": "Bad priority",
+        "priority": "urgent",
+    }, follow_redirects=True)
+    assert b"valid priority" in resp.data.lower()
+
+
 def test_dashboard_shows_stats(auth):
     auth.post("/dashboard", data={"title": "Task A"}, follow_redirects=True)
     auth.post("/dashboard", data={"title": "Task B"}, follow_redirects=True)

@@ -25,6 +25,7 @@ def get_task_analytics(tasks):
         for t in tasks
     ]
     df = pd.DataFrame(rows)
+    df["due_date"] = pd.to_datetime(df["due_date"])
 
     total = len(df)
     completed = len(df[df["status"] == "done"])
