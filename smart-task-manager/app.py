@@ -24,6 +24,7 @@ def create_app():
     login_manager.login_view = "login"
     login_manager.login_message_category = "warning"
 
+    from analytics import get_task_analytics
     from models import Task, TaskPriority, TaskStatus, User
 
     @login_manager.unauthorized_handler
@@ -465,6 +466,22 @@ def create_app():
         db.session.delete(task)
         db.session.commit()
         return jsonify({"message": "Task deleted"})
+
+    # ─── Analytics routes ───────────────────────────────────────────
+
+    @app.route("/analytics")
+    @login_required
+    def analytics_view():
+        tasks = Task.query.filter_by(user_id=current_user.id).all()
+        analytics = get_task_analytics(tasks)
+        return render_template("analytics.html", analytics=analytics)
+
+    @app.route("/api/analytics")
+    @login_required
+    def api_analytics():
+        tasks = Task.query.filter_by(user_id=current_user.id).all()
+        analytics = get_task_analytics(tasks)
+        return jsonify(analytics)
 
     with app.app_context():
         db.create_all()

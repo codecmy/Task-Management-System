@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}Analytics | Smart Task Manager{% endblock %}
+
+{% block content %}
+  <section class="dashboard">
+    <div class="dashboard-header">
+      <div>
+        <span class="eyebrow">Analytics</span>
+        <h1>Task intelligence</h1>
+        <p class="muted">Powered by Pandas &amp; NumPy</p>
+      </div>
+      <blockquote class="dashboard-quote">
+        <p>What gets measured gets managed.</p>
+      </blockquote>
+    </div>
+
+    <div class="insight-panel">
+      <div>
+        <span class="eyebrow">Overall progress</span>
+        <h2>{{ analytics.completion_pct }}% completion rate</h2>
+        <p>
+          {% if analytics.completion_pct == 0 %}
+            No tasks recorded yet.
+          {% elif analytics.completion_pct == 100 %}
+            All tasks completed. Clear workspace.
+          {% elif analytics.completion_pct >= 50 %}
+            More than half done. Steady progress.
+          {% else %}
+            Building momentum. Keep going.
+          {% endif %}
+        </p>
+      </div>
+      <div class="insight-metrics">
+        <span>{{ analytics.overdue }} overdue</span>
+        <span>{{ analytics.due_soon }} due this week</span>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div>
+        <span>Total tasks</span>
+        <strong>{{ analytics.total }}</strong>
+      </div>
+      <div>
+        <span>Completed</span>
+        <strong>{{ analytics.completed }}</strong>
+      </div>
+      <div>
+        <span>Pending</span>
+        <strong>{{ analytics.pending }}</strong>
+      </div>
+      <div>
+        <span>Completion</span>
+        <strong>{{ analytics.completion_pct }}%</strong>
+      </div>
+    </div>
+
+    <div class="workspace-grid">
+      <div class="task-column">
+        <h2>Breakdown by priority</h2>
+        <div class="task-list">
+          <article class="task priority-high">
+            <div class="task-body">
+              <div class="task-title-row"><h2>Critical</h2></div>
+              <div class="task-meta"><span class="tag priority">{{ analytics.by_priority.high }} tasks</span></div>
+            </div>
+          </article>
+          <article class="task priority-medium">
+            <div class="task-body">
+              <div class="task-title-row"><h2>Standard</h2></div>
+              <div class="task-meta"><span class="tag priority">{{ analytics.by_priority.medium }} tasks</span></div>
+            </div>
+          </article>
+          <article class="task priority-low">
+            <div class="task-body">
+              <div class="task-title-row"><h2>Low impact</h2></div>
+              <div class="task-meta"><span class="tag priority">{{ analytics.by_priority.low }} tasks</span></div>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div class="task-column">
+        <h2>Status snapshot</h2>
+        <div class="task-list">
+          <article class="task">
+            <div class="task-body">
+              <div class="task-title-row"><h2>Open work</h2></div>
+              <div class="task-meta"><span class="tag priority">{{ analytics.pending }} pending</span></div>
+            </div>
+          </article>
+          <article class="task done">
+            <div class="task-body">
+              <div class="task-title-row"><h2>Finished</h2></div>
+              <div class="task-meta"><span class="tag priority">{{ analytics.completed }} completed</span></div>
+            </div>
+          </article>
+          <article class="task priority-high">
+            <div class="task-body">
+              <div class="task-title-row"><h2>Urgency</h2></div>
+              <div class="task-meta">
+                <span class="tag priority">{{ analytics.overdue }} overdue</span>
+                <span class="tag priority">{{ analytics.due_soon }} due soon</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock %}
