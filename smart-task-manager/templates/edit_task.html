@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Task | Smart Task Manager{% endblock %}
+
+{% block content %}
+  <section class="auth-panel">
+    <span class="eyebrow">Task details</span>
+    <h1>Edit task</h1>
+    <form method="post" class="form">
+      <label for="title">Title</label>
+      <input id="title" name="title" type="text" value="{{ task.title }}" required>
+
+      <label for="priority">Priority</label>
+      <select id="priority" name="priority">
+        <option value="low" {{ "selected" if task.priority == "low" else "" }}>Low</option>
+        <option value="medium" {{ "selected" if task.priority == "medium" else "" }}>Medium</option>
+        <option value="high" {{ "selected" if task.priority == "high" else "" }}>High</option>
+      </select>
+
+      <label for="due_date">Due date</label>
+      <input
+        id="due_date"
+        name="due_date"
+        type="date"
+        value="{{ task.due_date.isoformat() if task.due_date else '' }}"
+      >
+
+      <label for="description">Notes</label>
+      <textarea id="description" name="description">{{ task.description or "" }}</textarea>
+
+      <div class="form-actions">
+        <button type="submit">Save task</button>
+        <a class="button secondary" href="{{ url_for('dashboard') }}">Cancel</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

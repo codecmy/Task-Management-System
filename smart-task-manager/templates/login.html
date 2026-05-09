@@ -3,17 +3,31 @@
 {% block title %}Login | Smart Task Manager{% endblock %}
 
 {% block content %}
-  <section class="auth-panel">
-    <h1>Welcome back</h1>
-    <form method="post" class="form">
-      <label for="email">Email</label>
-      <input id="email" name="email" type="email" autocomplete="email" required>
+  <section class="auth-layout">
+    <div class="auth-copy">
+      <span class="eyebrow">Daily focus</span>
+      <h1>Plan the day with intention.</h1>
+      <p class="muted">A focused workspace for turning scattered work into a steady, visible rhythm.</p>
+      <blockquote class="quote-card">
+        <p>Small steps, clearly chosen, turn a heavy day into a finished one.</p>
+      </blockquote>
+    </div>
 
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <div class="auth-panel">
+      <div class="panel-heading">
+        <span class="eyebrow">Account access</span>
+        <h2>Sign in</h2>
+      </div>
+      <form method="post" class="form">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="name@example.com" required>
 
-      <button type="submit">Login</button>
-    </form>
-    <p class="muted">New here? <a href="{{ url_for('register') }}">Create an account</a>.</p>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Your password" required>
+
+        <button type="submit">Enter workspace</button>
+      </form>
+      <p class="muted">New here? <a href="{{ url_for('register') }}">Create an account</a>.</p>
+    </div>
   </section>
 {% endblock %}

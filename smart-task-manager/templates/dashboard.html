@@ -6,42 +6,104 @@
   <section class="dashboard">
     <div class="dashboard-header">
       <div>
-        <h1>Tasks</h1>
-        <p class="muted">{{ tasks|length }} task{{ "" if tasks|length == 1 else "s" }}</p>
+        <span class="eyebrow">Workspace</span>
+        <h1>Work dashboard</h1>
+        <p class="muted">{{ stats.total }} items tracked, {{ stats.todo }} active, {{ stats.done }} completed</p>
+      </div>
+      <blockquote class="dashboard-quote">
+        <p>Decide once. Execute calmly.</p>
+      </blockquote>
+    </div>
+
+    <div class="stats-grid">
+      <div>
+        <span>Portfolio</span>
+        <strong>{{ stats.total }}</strong>
+      </div>
+      <div>
+        <span>Active work</span>
+        <strong>{{ stats.todo }}</strong>
+      </div>
+      <div>
+        <span>Completed</span>
+        <strong>{{ stats.done }}</strong>
+      </div>
+      <div>
+        <span>Critical focus</span>
+        <strong>{{ stats.high }}</strong>
       </div>
     </div>
 
-    <form method="post" class="task-form">
-      <input name="title" type="text" placeholder="Task title" required>
-      <input name="due_date" type="date">
-      <textarea name="description" placeholder="Notes"></textarea>
-      <button type="submit">Add task</button>
-    </form>
+    <div class="workspace-grid">
+      <form method="post" class="task-form">
+        <div class="form-heading">
+          <h2>New assignment</h2>
+          <span class="muted">Structured entry</span>
+        </div>
+        <input name="title" type="text" placeholder="Define the outcome" required>
+        <div class="form-row">
+          <select name="priority">
+            <option value="low">Low impact</option>
+            <option value="medium" selected>Standard priority</option>
+            <option value="high">Critical priority</option>
+          </select>
+          <input name="due_date" type="date">
+        </div>
+        <textarea name="description" placeholder="Context, owner, or next action"></textarea>
+        <button type="submit">Add assignment</button>
+      </form>
 
-    <div class="task-list">
-      {% for task in tasks %}
-        <article class="task {{ 'done' if task.is_done else '' }}">
-          <div>
-            <h2>{{ task.title }}</h2>
-            {% if task.description %}
-              <p>{{ task.description }}</p>
-            {% endif %}
-            {% if task.due_date %}
-              <span class="tag">Due {{ task.due_date.strftime("%b %d, %Y") }}</span>
-            {% endif %}
-          </div>
-          <div class="task-actions">
-            <form action="{{ url_for('toggle_task', task_id=task.id) }}" method="post">
-              <button type="submit">{{ "Undo" if task.is_done else "Done" }}</button>
-            </form>
-            <form action="{{ url_for('delete_task', task_id=task.id) }}" method="post">
-              <button class="danger" type="submit">Delete</button>
-            </form>
-          </div>
-        </article>
-      {% else %}
-        <p class="empty-state">No tasks yet.</p>
-      {% endfor %}
+      <div class="task-column">
+        <form method="get" class="filters">
+          <input name="q" type="search" placeholder="Search work items" value="{{ search }}">
+          <select name="status">
+            <option value="all" {{ "selected" if status_filter == "all" else "" }}>Every status</option>
+            <option value="todo" {{ "selected" if status_filter == "todo" else "" }}>Active</option>
+            <option value="done" {{ "selected" if status_filter == "done" else "" }}>Completed</option>
+          </select>
+          <select name="priority">
+            <option value="all" {{ "selected" if priority_filter == "all" else "" }}>Every priority</option>
+            <option value="high" {{ "selected" if priority_filter == "high" else "" }}>Critical</option>
+            <option value="medium" {{ "selected" if priority_filter == "medium" else "" }}>Standard</option>
+            <option value="low" {{ "selected" if priority_filter == "low" else "" }}>Low impact</option>
+          </select>
+          <button type="submit">Refine</button>
+          <a class="button secondary" href="{{ url_for('dashboard') }}">Clear</a>
+        </form>
+
+        <div class="task-list">
+          {% for task in tasks %}
+            <article class="task {{ 'done' if task.is_done else '' }} priority-{{ task.priority }}">
+              <div class="task-body">
+                <div class="task-title-row">
+                  <h2>{{ task.title }}</h2>
+                  <span class="status-dot"></span>
+                </div>
+                {% if task.description %}
+                  <p>{{ task.description }}</p>
+                {% endif %}
+                <div class="task-meta">
+                  <span class="tag priority">{{ task.priority|title }}</span>
+                  {% if task.due_date %}
+                    <span class="tag">Due {{ task.due_date.strftime("%b %d, %Y") }}</span>
+                  {% endif %}
+                </div>
+              </div>
+              <div class="task-actions">
+                <a class="button secondary compact" href="{{ url_for('edit_task', task_id=task.id) }}">Edit</a>
+                <form action="{{ url_for('toggle_task', task_id=task.id) }}" method="post">
+                  <button class="compact" type="submit">{{ "Reopen" if task.is_done else "Complete" }}</button>
+                </form>
+                <form action="{{ url_for('delete_task', task_id=task.id) }}" method="post">
+                  <button class="danger compact" type="submit">Delete</button>
+                </form>
+              </div>
+            </article>
+          {% else %}
+            <p class="empty-state">Your workspace is clear.</p>
+          {% endfor %}
+        </div>
+      </div>
     </div>
   </section>
 {% endblock %}

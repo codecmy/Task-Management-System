@@ -3,20 +3,34 @@
 {% block title %}Register | Smart Task Manager{% endblock %}
 
 {% block content %}
-  <section class="auth-panel">
-    <h1>Create account</h1>
-    <form method="post" class="form">
-      <label for="name">Name</label>
-      <input id="name" name="name" type="text" autocomplete="name" required>
+  <section class="auth-layout">
+    <div class="auth-copy">
+      <span class="eyebrow">Start organized</span>
+      <h1>Build your command center.</h1>
+      <p class="muted">Shape a task space that feels composed, useful, and ready for real work.</p>
+      <blockquote class="quote-card">
+        <p>Clarity is not extra polish. It is how good work begins.</p>
+      </blockquote>
+    </div>
 
-      <label for="email">Email</label>
-      <input id="email" name="email" type="email" autocomplete="email" required>
+    <div class="auth-panel">
+      <div class="panel-heading">
+        <span class="eyebrow">New workspace</span>
+        <h2>Create account</h2>
+      </div>
+      <form method="post" class="form">
+        <label for="name">Name</label>
+        <input id="name" name="name" type="text" autocomplete="name" placeholder="Your name" required>
 
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" autocomplete="new-password" required>
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="name@example.com" required>
 
-      <button type="submit">Register</button>
-    </form>
-    <p class="muted">Already have an account? <a href="{{ url_for('login') }}">Login</a>.</p>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="new-password" placeholder="Choose a password" required>
+
+        <button type="submit">Create workspace</button>
+      </form>
+      <p class="muted">Already have an account? <a href="{{ url_for('login') }}">Login</a>.</p>
+    </div>
   </section>
 {% endblock %}

@@ -12,6 +12,12 @@ class TaskStatus(str, Enum):
     DONE = "done"
 
 
+class TaskPriority(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -37,6 +43,7 @@ class Task(db.Model):
     title = db.Column(db.String(180), nullable=False)
     description = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(20), default=TaskStatus.TODO.value, nullable=False)
+    priority = db.Column(db.String(20), default=TaskPriority.MEDIUM.value, nullable=False)
     due_date = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(

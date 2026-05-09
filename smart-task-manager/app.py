@@ -3,7 +3,7 @@ from pathlib import Path
 
 from flask import Flask, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, login_user, logout_user
-from sqlalchemy import case
+from sqlalchemy import case, inspect, or_, text
 
 from config import Config
 from extensions import db, login_manager, socketio
@@ -22,7 +22,36 @@ def create_app():
     login_manager.login_view = "login"
     login_manager.login_message_category = "warning"
 
-    from models import Task, TaskStatus, User
+    from models import Task, TaskPriority, TaskStatus, User
+
+    def parse_due_date(value):
+        value = value.strip()
+        if not value:
+            return None
+
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError("Use a valid due date.") from None
+
+    def get_task_form_data():
+        title = request.form.get("title", "").strip()
+        description = request.form.get("description", "").strip()
+        due_date = parse_due_date(request.form.get("due_date", ""))
+        priority = request.form.get("priority", TaskPriority.MEDIUM.value).strip().lower()
+
+        if priority not in {item.value for item in TaskPriority}:
+            raise ValueError("Choose a valid priority.")
+
+        if not title:
+            raise ValueError("Task title is required.")
+
+        return {
+            "title": title,
+            "description": description or None,
+            "due_date": due_date,
+            "priority": priority,
+        }
 
     @app.route("/")
     def index():
@@ -88,45 +117,64 @@ def create_app():
     @login_required
     def dashboard():
         if request.method == "POST":
-            title = request.form.get("title", "").strip()
-            description = request.form.get("description", "").strip()
-            due_date_raw = request.form.get("due_date", "").strip()
-            due_date = None
-
-            if due_date_raw:
-                try:
-                    due_date = datetime.strptime(due_date_raw, "%Y-%m-%d").date()
-                except ValueError:
-                    flash("Use a valid due date.", "error")
-                    return redirect(url_for("dashboard"))
-
-            if not title:
-                flash("Task title is required.", "error")
+            try:
+                form_data = get_task_form_data()
+            except ValueError as error:
+                flash(str(error), "error")
                 return redirect(url_for("dashboard"))
 
-            task = Task(
-                title=title,
-                description=description or None,
-                due_date=due_date,
-                user_id=current_user.id,
-            )
+            task = Task(**form_data, user_id=current_user.id)
             db.session.add(task)
             db.session.commit()
             socketio.emit("task_created", {"title": task.title, "user_id": current_user.id})
             flash("Task added.", "success")
             return redirect(url_for("dashboard"))
 
-        tasks = (
-            Task.query.filter_by(user_id=current_user.id)
-            .order_by(
-                case((Task.status == TaskStatus.TODO.value, 0), else_=1),
-                Task.due_date.is_(None),
-                Task.due_date.asc(),
-                Task.created_at.desc(),
+        status_filter = request.args.get("status", "all").lower()
+        priority_filter = request.args.get("priority", "all").lower()
+        search = request.args.get("q", "").strip()
+        task_query = Task.query.filter_by(user_id=current_user.id)
+        all_user_tasks = task_query.all()
+
+        if status_filter in {TaskStatus.TODO.value, TaskStatus.DONE.value}:
+            task_query = task_query.filter_by(status=status_filter)
+
+        if priority_filter in {priority.value for priority in TaskPriority}:
+            task_query = task_query.filter_by(priority=priority_filter)
+
+        if search:
+            pattern = f"%{search}%"
+            task_query = task_query.filter(
+                or_(Task.title.ilike(pattern), Task.description.ilike(pattern))
             )
-            .all()
+
+        tasks = task_query.order_by(
+            case((Task.status == TaskStatus.TODO.value, 0), else_=1),
+            case(
+                (Task.priority == TaskPriority.HIGH.value, 0),
+                (Task.priority == TaskPriority.MEDIUM.value, 1),
+                else_=2,
+            ),
+            Task.due_date.is_(None),
+            Task.due_date.asc(),
+            Task.created_at.desc(),
+        ).all()
+
+        stats = {
+            "total": len(all_user_tasks),
+            "todo": sum(1 for task in all_user_tasks if task.status == TaskStatus.TODO.value),
+            "done": sum(1 for task in all_user_tasks if task.status == TaskStatus.DONE.value),
+            "high": sum(1 for task in all_user_tasks if task.priority == TaskPriority.HIGH.value),
+        }
+
+        return render_template(
+            "dashboard.html",
+            priority_filter=priority_filter,
+            search=search,
+            stats=stats,
+            status_filter=status_filter,
+            tasks=tasks,
         )
-        return render_template("dashboard.html", tasks=tasks)
 
     @app.route("/tasks/<int:task_id>/toggle", methods=["POST"])
     @login_required
@@ -136,6 +184,28 @@ def create_app():
         db.session.commit()
         flash("Task updated.", "success")
         return redirect(url_for("dashboard"))
+
+    @app.route("/tasks/<int:task_id>/edit", methods=["GET", "POST"])
+    @login_required
+    def edit_task(task_id):
+        task = Task.query.filter_by(id=task_id, user_id=current_user.id).first_or_404()
+
+        if request.method == "POST":
+            try:
+                form_data = get_task_form_data()
+            except ValueError as error:
+                flash(str(error), "error")
+                return render_template("edit_task.html", task=task)
+
+            task.title = form_data["title"]
+            task.description = form_data["description"]
+            task.due_date = form_data["due_date"]
+            task.priority = form_data["priority"]
+            db.session.commit()
+            flash("Task updated.", "success")
+            return redirect(url_for("dashboard"))
+
+        return render_template("edit_task.html", task=task)
 
     @app.route("/tasks/<int:task_id>/delete", methods=["POST"])
     @login_required
@@ -148,6 +218,13 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        inspector = inspect(db.engine)
+        task_columns = [column["name"] for column in inspector.get_columns("task")]
+        if "priority" not in task_columns:
+            with db.engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE task ADD COLUMN priority VARCHAR(20) NOT NULL DEFAULT 'medium'")
+                )
 
     return app
 
