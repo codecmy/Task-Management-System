@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Smart Task Manager{% endblock %}
+
+{% block content %}
+  <section class="dashboard">
+    <div class="dashboard-header">
+      <div>
+        <h1>Tasks</h1>
+        <p class="muted">{{ tasks|length }} task{{ "" if tasks|length == 1 else "s" }}</p>
+      </div>
+    </div>
+
+    <form method="post" class="task-form">
+      <input name="title" type="text" placeholder="Task title" required>
+      <input name="due_date" type="date">
+      <textarea name="description" placeholder="Notes"></textarea>
+      <button type="submit">Add task</button>
+    </form>
+
+    <div class="task-list">
+      {% for task in tasks %}
+        <article class="task {{ 'done' if task.is_done else '' }}">
+          <div>
+            <h2>{{ task.title }}</h2>
+            {% if task.description %}
+              <p>{{ task.description }}</p>
+            {% endif %}
+            {% if task.due_date %}
+              <span class="tag">Due {{ task.due_date.strftime("%b %d, %Y") }}</span>
+            {% endif %}
+          </div>
+          <div class="task-actions">
+            <form action="{{ url_for('toggle_task', task_id=task.id) }}" method="post">
+              <button type="submit">{{ "Undo" if task.is_done else "Done" }}</button>
+            </form>
+            <form action="{{ url_for('delete_task', task_id=task.id) }}" method="post">
+              <button class="danger" type="submit">Delete</button>
+            </form>
+          </div>
+        </article>
+      {% else %}
+        <p class="empty-state">No tasks yet.</p>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}
