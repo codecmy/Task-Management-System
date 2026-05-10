@@ -46,3 +46,27 @@ def test_emit_on_html_toggle(auth):
         args, kwargs = mock_emit.call_args
         assert args[0] == "task_updated"
         assert "room" in kwargs
+
+
+def test_emit_on_api_move(auth):
+    created = auth.post("/tasks", json={"title": "Move WS"}).get_json()
+    tid = created["task"]["id"]
+    with patch("extensions.socketio.emit") as mock_emit:
+        resp = auth.put(f"/tasks/{tid}/move", json={"status": "done"})
+        assert resp.status_code == 200
+        mock_emit.assert_called_once()
+        args, kwargs = mock_emit.call_args
+        assert args[0] == "task_moved"
+        assert "room" in kwargs
+
+
+def test_emit_on_api_reorder(auth):
+    created = auth.post("/tasks", json={"title": "Reorder WS"}).get_json()
+    tid = created["task"]["id"]
+    with patch("extensions.socketio.emit") as mock_emit:
+        resp = auth.put(f"/tasks/{tid}/reorder", json={"position": 3.0})
+        assert resp.status_code == 200
+        mock_emit.assert_called_once()
+        args, kwargs = mock_emit.call_args
+        assert args[0] == "task_moved"
+        assert "room" in kwargs

@@ -174,6 +174,49 @@ def create_app():
             payload["task"] = task_dict
         socketio.emit(event, payload, room=str(current_user.id))
 
+    def get_kanban_data(group_by, user_id):
+        tasks = Task.query.filter_by(user_id=user_id).all()
+
+        if group_by == "status":
+            groups = [
+                (TaskStatus.TODO.value, "To Do"),
+                (TaskStatus.IN_PROGRESS.value, "In Progress"),
+                (TaskStatus.DONE.value, "Done"),
+            ]
+            key_field = "status"
+            within_sort = lambda t: (
+                t.position or 0.0,
+                {"high": 0, "medium": 1, "low": 2}.get(t.priority, 99),
+                t.due_date or date(9999, 12, 31),
+                t.created_at or datetime.min,
+            )
+        else:
+            groups = [
+                (TaskPriority.HIGH.value, "High"),
+                (TaskPriority.MEDIUM.value, "Medium"),
+                (TaskPriority.LOW.value, "Low"),
+            ]
+            key_field = "priority"
+            within_sort = lambda t: (
+                {"todo": 0, "in_progress": 1, "done": 2}.get(t.status, 99),
+                t.position or 0.0,
+                t.due_date or date(9999, 12, 31),
+                t.created_at or datetime.min,
+            )
+
+        columns = []
+        for key, label in groups:
+            col_tasks = [t for t in tasks if getattr(t, key_field) == key]
+            col_tasks.sort(key=within_sort)
+            columns.append({
+                "key": key,
+                "label": label,
+                "count": len(col_tasks),
+                "tasks": [task_to_dict(t) for t in col_tasks],
+            })
+
+        return {"view": group_by, "columns": columns}
+
     @socketio.on("connect")
     def handle_connect():
         if current_user.is_authenticated:
@@ -305,9 +348,12 @@ def create_app():
         }
         insights = build_task_insights(all_user_tasks)
 
+        kanban_data = get_kanban_data("status", current_user.id)
+
         return render_template(
             "dashboard.html",
             insights=insights,
+            kanban_data=kanban_data,
             priority_filter=priority_filter,
             search=search,
             stats=stats,
@@ -511,6 +557,70 @@ def create_app():
         emit_user_event("task_deleted", task_dict)
         return jsonify({"message": "Task deleted"})
 
+    # ─── Kanban move / reorder routes ──────────────────────────────
+
+    @app.route("/tasks/<int:task_id>/move", methods=["PUT"])
+    @login_required
+    def api_move_task(task_id):
+        task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+
+        try:
+            data = get_json_payload()
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+
+        if "status" not in data:
+            return jsonify({"error": "status is required"}), 400
+
+        try:
+            new_status = normalize_status(data["status"])
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+
+        task.status = new_status
+        new_position = data.get("position")
+        if new_position is not None:
+            if not isinstance(new_position, (int, float)):
+                return jsonify({"error": "position must be a number"}), 400
+            task.position = float(new_position)
+        else:
+            max_pos = (
+                db.session.query(db.func.max(Task.position))
+                .filter(Task.user_id == current_user.id, Task.status == new_status)
+                .scalar()
+            )
+            task.position = (max_pos or 0.0) + 1.0
+
+        db.session.commit()
+        emit_user_event("task_moved", task_to_dict(task))
+        return jsonify({"message": "Task moved", "task": task_to_dict(task)})
+
+    @app.route("/tasks/<int:task_id>/reorder", methods=["PUT"])
+    @login_required
+    def api_reorder_task(task_id):
+        task = Task.query.filter_by(id=task_id, user_id=current_user.id).first()
+        if not task:
+            return jsonify({"error": "Task not found"}), 404
+
+        try:
+            data = get_json_payload()
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+
+        if "position" not in data:
+            return jsonify({"error": "position is required"}), 400
+
+        new_position = data["position"]
+        if not isinstance(new_position, (int, float)):
+            return jsonify({"error": "position must be a number"}), 400
+
+        task.position = float(new_position)
+        db.session.commit()
+        emit_user_event("task_moved", task_to_dict(task))
+        return jsonify({"message": "Task reordered", "task": task_to_dict(task)})
+
     # ─── Analytics routes ───────────────────────────────────────────
 
     @app.route("/analytics")
@@ -526,6 +636,14 @@ def create_app():
         tasks = Task.query.filter_by(user_id=current_user.id).all()
         analytics = get_task_analytics(tasks)
         return jsonify(analytics)
+
+    @app.route("/api/kanban")
+    @login_required
+    def api_kanban():
+        group_by = request.args.get("group_by", "status").strip().lower()
+        if group_by not in {"status", "priority"}:
+            return jsonify({"error": "group_by must be 'status' or 'priority'"}), 400
+        return jsonify(get_kanban_data(group_by, current_user.id))
 
     with app.app_context():
         db.create_all()

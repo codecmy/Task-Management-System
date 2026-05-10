@@ -232,3 +232,117 @@ def test_api_unauthorized_on_delete(unauth_client):
     assert resp.status_code == 401
     assert resp.is_json
     assert resp.get_json()["error"] == "Authentication required"
+
+
+# ─── Kanban API tests ────────────────────────────────────────────────
+
+
+def test_kanban_requires_auth(client):
+    resp = client.get("/api/kanban")
+    assert resp.status_code == 401
+    assert resp.is_json
+
+
+def test_kanban_status_grouping(auth):
+    auth.post("/tasks", json={"title": "Task A", "priority": "high"})
+    auth.post("/tasks", json={"title": "Task B", "priority": "low"})
+    auth.post("/tasks", json={"title": "Task C", "priority": "medium"})
+    resp = auth.get("/api/kanban?group_by=status")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["view"] == "status"
+    assert len(data["columns"]) == 3
+    todo_col = [c for c in data["columns"] if c["key"] == "todo"][0]
+    assert todo_col["count"] == 3
+    assert todo_col["label"] == "To Do"
+    assert len(todo_col["tasks"]) == 3
+
+
+def test_kanban_priority_grouping(auth):
+    auth.post("/tasks", json={"title": "Task A", "priority": "high"})
+    auth.post("/tasks", json={"title": "Task B", "priority": "low"})
+    auth.post("/tasks", json={"title": "Task C", "priority": "medium"})
+    resp = auth.get("/api/kanban?group_by=priority")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["view"] == "priority"
+    assert len(data["columns"]) == 3
+    for col in data["columns"]:
+        assert "key" in col
+        assert "label" in col
+        assert "count" in col
+        assert "tasks" in col
+
+
+def test_kanban_invalid_group_by(auth):
+    resp = auth.get("/api/kanban?group_by=invalid")
+    assert resp.status_code == 400
+    assert resp.is_json
+
+
+def test_kanban_empty(auth):
+    resp = auth.get("/api/kanban")
+    data = resp.get_json()
+    for col in data["columns"]:
+        assert col["count"] == 0
+        assert col["tasks"] == []
+
+
+def test_move_task(auth):
+    created = auth.post("/tasks", json={"title": "Movable"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}/move", json={
+        "status": "in_progress",
+        "position": 0.0,
+    })
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["task"]["status"] == "in_progress"
+    assert data["message"] == "Task moved"
+
+
+def test_move_task_no_position(auth):
+    created = auth.post("/tasks", json={"title": "Auto position"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}/move", json={"status": "done"})
+    assert resp.status_code == 200
+    assert resp.get_json()["task"]["status"] == "done"
+
+
+def test_move_task_invalid_status(auth):
+    created = auth.post("/tasks", json={"title": "Bad move"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}/move", json={"status": "invalid"})
+    assert resp.status_code == 400
+
+
+def test_move_task_no_status(auth):
+    created = auth.post("/tasks", json={"title": "No status"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}/move", json={"position": 0.0})
+    assert resp.status_code == 400
+
+
+def test_move_task_not_found(auth):
+    resp = auth.put("/tasks/99999/move", json={"status": "done"})
+    assert resp.status_code == 404
+
+
+def test_reorder_task(auth):
+    created = auth.post("/tasks", json={"title": "Reorder me"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}/reorder", json={"position": 5.0})
+    assert resp.status_code == 200
+    assert resp.get_json()["message"] == "Task reordered"
+
+
+def test_reorder_task_no_position(auth):
+    created = auth.post("/tasks", json={"title": "No pos"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}/reorder", json={})
+    assert resp.status_code == 400
+
+
+def test_reorder_task_not_found(auth):
+    resp = auth.put("/tasks/99999/reorder", json={"position": 0.0})
+    assert resp.status_code == 404
