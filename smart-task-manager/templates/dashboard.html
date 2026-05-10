@@ -47,8 +47,24 @@
       </div>
     </div>
 
-    <div class="workspace-grid">
-      <form method="post" class="task-form">
+    <!-- ─── Toolbar ──────────────────────────────────────────────── -->
+
+    <div class="workspace-toolbar">
+      <button class="sidebar-toggle" id="sidebar-toggle" title="Toggle form">☰</button>
+      <div class="view-toggle">
+        <button class="active" data-view="kanban">Kanban</button>
+        <button data-view="list">List</button>
+      </div>
+      <div class="group-toggle" id="group-toggle">
+        <button class="active" data-group="status">Status</button>
+        <button data-group="priority">Priority</button>
+      </div>
+    </div>
+
+    <!-- ─── Workspace ────────────────────────────────────────────── -->
+
+    <div class="workspace-content">
+      <form method="post" class="task-form sidebar-collapsed" id="task-form">
         <div class="form-heading">
           <h2>New assignment</h2>
           <span class="muted">Structured entry</span>
@@ -66,7 +82,56 @@
         <button type="submit">Add assignment</button>
       </form>
 
-      <div class="task-column">
+      <!-- ─── Kanban Board ─────────────────────────────────────────── -->
+
+      <div class="kanban-board" id="kanban-board">
+        {% for col in kanban_data.columns %}
+          <div class="kanban-column kanban-column-{{ col.key }}" data-column="{{ col.key }}">
+            <div class="kanban-column-header">
+              <span class="column-title">{{ col.label }}</span>
+              <span class="column-count" id="count-{{ col.key }}">{{ col.count }}</span>
+            </div>
+            <div class="kanban-cards" id="column-{{ col.key }}">
+              {% for task in col.tasks %}
+                <article class="kanban-card priority-{{ task.priority }} {{ 'done' if task.status == 'done' else '' }}"
+                         data-task-id="{{ task.id }}"
+                         data-status="{{ task.status }}"
+                         data-priority="{{ task.priority }}"
+                         data-position="{{ task.position or 0 }}"
+                         data-due-date="{{ task.due_date if task.due_date else '' }}"
+                         data-created-at="{{ task.created_at }}">
+                  <div class="kanban-card-body">
+                    <div class="card-title-row">
+                      <span class="card-title">{{ task.title }}</span>
+                      <span class="status-dot"></span>
+                    </div>
+                    <div class="card-meta">
+                      <span class="tag priority">{{ task.priority|title }}</span>
+                      {% if task.due_date %}
+                        <span class="tag">Due {{ task.due_date[:10] }}</span>
+                      {% endif %}
+                    </div>
+                  </div>
+                  <div class="card-actions">
+                    <form action="{{ url_for('toggle_task', task_id=task.id) }}" method="post" class="inline-form">
+                      <button class="card-action-btn" title="{{ 'Reopen' if task.status == 'done' else 'Complete' }}">{{ '↺' if task.status == 'done' else '✓' }}</button>
+                    </form>
+                    <a class="card-action-btn" href="{{ url_for('edit_task', task_id=task.id) }}" title="Edit">✎</a>
+                    <form action="{{ url_for('delete_task', task_id=task.id) }}" method="post" class="inline-form">
+                      <button class="card-action-btn danger" title="Delete">✕</button>
+                    </form>
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+            <div class="kanban-drop-zone">Drop tasks here</div>
+          </div>
+        {% endfor %}
+      </div>
+
+      <!-- ─── Flat List (hidden by default) ────────────────────────── -->
+
+      <div class="task-list hidden" id="task-list">
         <form method="get" class="filters">
           <input name="q" type="search" placeholder="Search work items" value="{{ search }}">
           <select name="status">
@@ -85,44 +150,44 @@
           <a class="button secondary" href="{{ url_for('dashboard') }}">Clear</a>
         </form>
 
-        <div class="task-list" id="task-list">
-          {% for task in tasks %}
-            <article class="task {{ 'done' if task.is_done else '' }} priority-{{ task.priority }}"
-                     data-task-id="{{ task.id }}"
-                     data-status="{{ task.status }}"
-                     data-priority="{{ task.priority }}"
-                     data-due-date="{{ task.due_date.isoformat() if task.due_date else '' }}"
-                     data-created-at="{{ task.created_at.isoformat() }}">
-              <div class="task-body">
-                <div class="task-title-row">
-                  <h2>{{ task.title }}</h2>
-                  <span class="status-dot"></span>
-                </div>
-                {% if task.description %}
-                  <p>{{ task.description }}</p>
+        {% for task in tasks %}
+          <article class="task {{ 'done' if task.is_done else '' }} priority-{{ task.priority }}"
+                   data-task-id="{{ task.id }}"
+                   data-status="{{ task.status }}"
+                   data-priority="{{ task.priority }}"
+                   data-due-date="{{ task.due_date.isoformat() if task.due_date else '' }}"
+                   data-created-at="{{ task.created_at.isoformat() }}">
+            <div class="task-body">
+              <div class="task-title-row">
+                <h2>{{ task.title }}</h2>
+                <span class="status-dot"></span>
+              </div>
+              {% if task.description %}
+                <p>{{ task.description }}</p>
+              {% endif %}
+              <div class="task-meta">
+                <span class="tag priority">{{ task.priority|title }}</span>
+                {% if task.due_date %}
+                  <span class="tag">Due {{ task.due_date.strftime("%b %d, %Y") }}</span>
                 {% endif %}
-                <div class="task-meta">
-                  <span class="tag priority">{{ task.priority|title }}</span>
-                  {% if task.due_date %}
-                    <span class="tag">Due {{ task.due_date.strftime("%b %d, %Y") }}</span>
-                  {% endif %}
-                </div>
               </div>
-              <div class="task-actions">
-                <a class="button secondary compact" href="{{ url_for('edit_task', task_id=task.id) }}">Edit</a>
-                <form action="{{ url_for('toggle_task', task_id=task.id) }}" method="post">
-                  <button class="compact" type="submit">{{ "Reopen" if task.is_done else "Complete" }}</button>
-                </form>
-                <form action="{{ url_for('delete_task', task_id=task.id) }}" method="post">
-                  <button class="danger compact" type="submit">Delete</button>
-                </form>
-              </div>
-            </article>
-          {% else %}
-            <p class="empty-state" id="empty-state">Your workspace is clear.</p>
-          {% endfor %}
-        </div>
+            </div>
+            <div class="task-actions">
+              <a class="button secondary compact" href="{{ url_for('edit_task', task_id=task.id) }}">Edit</a>
+              <form action="{{ url_for('toggle_task', task_id=task.id) }}" method="post">
+                <button class="compact" type="submit">{{ "Reopen" if task.is_done else "Complete" }}</button>
+              </form>
+              <form action="{{ url_for('delete_task', task_id=task.id) }}" method="post">
+                <button class="danger compact" type="submit">Delete</button>
+              </form>
+            </div>
+          </article>
+        {% else %}
+          <p class="empty-state" id="empty-state">Your workspace is clear.</p>
+        {% endfor %}
       </div>
     </div>
   </section>
+
+  <script id="kanban-data" type="application/json">{{ kanban_data | tojson | safe }}</script>
 {% endblock %}

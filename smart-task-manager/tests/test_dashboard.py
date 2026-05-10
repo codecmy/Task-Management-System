@@ -78,3 +78,38 @@ def test_dashboard_search(auth):
     auth.post("/dashboard", data={"title": "UniqueTaskName"}, follow_redirects=True)
     resp = auth.get("/dashboard?q=UniqueTaskName")
     assert b"UniqueTaskName" in resp.data
+
+
+def test_dashboard_kanban_columns_exist(auth):
+    resp = auth.get("/dashboard")
+    assert resp.status_code == 200
+    assert b"kanban-column" in resp.data
+    assert b"kanban-board" in resp.data
+
+
+def test_dashboard_kanban_shows_tasks_in_columns(auth):
+    auth.post("/dashboard", data={"title": "Board task"}, follow_redirects=True)
+    resp = auth.get("/dashboard")
+    assert b'data-task-id="1"' in resp.data
+
+
+def test_dashboard_view_toggle_buttons(auth):
+    resp = auth.get("/dashboard")
+    assert b"data-view=\"kanban\"" in resp.data
+    assert b"data-view=\"list\"" in resp.data
+
+
+def test_dashboard_group_toggle_buttons(auth):
+    resp = auth.get("/dashboard")
+    assert b"data-group=\"status\"" in resp.data
+    assert b"data-group=\"priority\"" in resp.data
+
+
+def test_dashboard_sidebar_toggle_exists(auth):
+    resp = auth.get("/dashboard")
+    assert b"sidebar-toggle" in resp.data
+
+
+def test_dashboard_kanban_data_embedded(auth):
+    resp = auth.get("/dashboard")
+    assert b"kanban-data" in resp.data
