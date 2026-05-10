@@ -8,7 +8,7 @@
       <div>
         <span class="eyebrow">Workspace</span>
         <h1>Work dashboard</h1>
-        <p class="muted" id="dashboard-subtitle">{{ stats.total }} items tracked, {{ stats.todo }} active, {{ stats.done }} completed</p>
+        <p class="muted" id="dashboard-subtitle">{{ stats.total }} items tracked, {{ stats.todo + stats.in_progress }} active, {{ stats.done }} completed</p>
       </div>
       <blockquote class="dashboard-quote">
         <p>Decide once. Execute calmly.</p>
@@ -35,7 +35,7 @@
       </div>
       <div>
         <span>Active work</span>
-        <strong>{{ stats.todo }}</strong>
+        <strong>{{ stats.todo + stats.in_progress }}</strong>
       </div>
       <div>
         <span>Completed</span>
@@ -71,7 +71,8 @@
           <input name="q" type="search" placeholder="Search work items" value="{{ search }}">
           <select name="status">
             <option value="all" {{ "selected" if status_filter == "all" else "" }}>Every status</option>
-            <option value="todo" {{ "selected" if status_filter == "todo" else "" }}>Active</option>
+            <option value="todo" {{ "selected" if status_filter == "todo" else "" }}>To Do</option>
+            <option value="in_progress" {{ "selected" if status_filter == "in_progress" else "" }}>In Progress</option>
             <option value="done" {{ "selected" if status_filter == "done" else "" }}>Completed</option>
           </select>
           <select name="priority">

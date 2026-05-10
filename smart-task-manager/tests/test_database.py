@@ -32,6 +32,16 @@ def test_task_due_date_optional(auth):
     assert resp.get_json()["task"]["due_date"] is None
 
 
+def test_task_default_position(auth, app):
+    resp = auth.post("/tasks", json={"title": "Position test"})
+    assert resp.status_code == 201
+    task = resp.get_json()["task"]
+    from extensions import db
+    from models import Task
+    row = db.session.get(Task, task["id"])
+    assert row.position == 0.0 or row.position is None
+
+
 def test_task_cascade_delete(auth, app):
     auth.post("/tasks", json={"title": "Cascade me"})
     user = User.query.filter_by(email="test@example.com").first()

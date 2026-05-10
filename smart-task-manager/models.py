@@ -9,6 +9,7 @@ from extensions import db, login_manager
 
 class TaskStatus(str, Enum):
     TODO = "todo"
+    IN_PROGRESS = "in_progress"
     DONE = "done"
 
 
@@ -45,6 +46,7 @@ class Task(db.Model):
     status = db.Column(db.String(20), default=TaskStatus.TODO.value, nullable=False)
     priority = db.Column(db.String(20), default=TaskPriority.MEDIUM.value, nullable=False)
     due_date = db.Column(db.Date, nullable=True)
+    position = db.Column(db.Float, default=0.0)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
         db.DateTime,

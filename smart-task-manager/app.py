@@ -98,8 +98,8 @@ def create_app():
         if not isinstance(value, str):
             raise ValueError("Status must be text")
         status = value.strip().lower()
-        if status not in {TaskStatus.TODO.value, TaskStatus.DONE.value}:
-            raise ValueError("Status must be 'todo' or 'done'.")
+        if status not in {TaskStatus.TODO.value, TaskStatus.IN_PROGRESS.value, TaskStatus.DONE.value}:
+            raise ValueError("Status must be 'todo', 'in_progress', or 'done'.")
         return status
 
     def normalize_due_date(value):
@@ -118,7 +118,7 @@ def create_app():
     def build_task_insights(tasks):
         today = date.today()
         upcoming_limit = today + timedelta(days=7)
-        active_tasks = [task for task in tasks if task.status == TaskStatus.TODO.value]
+        active_tasks = [task for task in tasks if task.status != TaskStatus.DONE.value]
         overdue = [
             task for task in active_tasks if task.due_date is not None and task.due_date < today
         ]
@@ -164,6 +164,7 @@ def create_app():
         stats = {
             "total": len(tasks),
             "todo": sum(1 for t in tasks if t.status == TaskStatus.TODO.value),
+            "in_progress": sum(1 for t in tasks if t.status == TaskStatus.IN_PROGRESS.value),
             "done": sum(1 for t in tasks if t.status == TaskStatus.DONE.value),
             "high": sum(1 for t in tasks if t.priority == TaskPriority.HIGH.value),
         }
@@ -266,7 +267,7 @@ def create_app():
         task_query = Task.query.filter_by(user_id=current_user.id)
         all_user_tasks = task_query.all()
 
-        if status_filter in {TaskStatus.TODO.value, TaskStatus.DONE.value}:
+        if status_filter in {status.value for status in TaskStatus}:
             task_query = task_query.filter_by(status=status_filter)
 
         if priority_filter in {priority.value for priority in TaskPriority}:
@@ -279,12 +280,17 @@ def create_app():
             )
 
         tasks = task_query.order_by(
-            case((Task.status == TaskStatus.TODO.value, 0), else_=1),
+            case(
+                (Task.status == TaskStatus.TODO.value, 0),
+                (Task.status == TaskStatus.IN_PROGRESS.value, 1),
+                else_=2,
+            ),
             case(
                 (Task.priority == TaskPriority.HIGH.value, 0),
                 (Task.priority == TaskPriority.MEDIUM.value, 1),
                 else_=2,
             ),
+            Task.position.asc().nullsfirst(),
             Task.due_date.is_(None),
             Task.due_date.asc(),
             Task.created_at.desc(),
@@ -293,6 +299,7 @@ def create_app():
         stats = {
             "total": len(all_user_tasks),
             "todo": sum(1 for task in all_user_tasks if task.status == TaskStatus.TODO.value),
+            "in_progress": sum(1 for task in all_user_tasks if task.status == TaskStatus.IN_PROGRESS.value),
             "done": sum(1 for task in all_user_tasks if task.status == TaskStatus.DONE.value),
             "high": sum(1 for task in all_user_tasks if task.priority == TaskPriority.HIGH.value),
         }
@@ -414,7 +421,7 @@ def create_app():
         search = request.args.get("q", "").strip()
         task_query = Task.query.filter_by(user_id=current_user.id)
 
-        if status_filter in {TaskStatus.TODO.value, TaskStatus.DONE.value}:
+        if status_filter in {status.value for status in TaskStatus}:
             task_query = task_query.filter_by(status=status_filter)
 
         if priority_filter in {priority.value for priority in TaskPriority}:
@@ -427,12 +434,17 @@ def create_app():
             )
 
         tasks = task_query.order_by(
-            case((Task.status == TaskStatus.TODO.value, 0), else_=1),
+            case(
+                (Task.status == TaskStatus.TODO.value, 0),
+                (Task.status == TaskStatus.IN_PROGRESS.value, 1),
+                else_=2,
+            ),
             case(
                 (Task.priority == TaskPriority.HIGH.value, 0),
                 (Task.priority == TaskPriority.MEDIUM.value, 1),
                 else_=2,
             ),
+            Task.position.asc().nullsfirst(),
             Task.due_date.is_(None),
             Task.due_date.asc(),
             Task.created_at.desc(),
@@ -523,6 +535,11 @@ def create_app():
             with db.engine.begin() as connection:
                 connection.execute(
                     text("ALTER TABLE task ADD COLUMN priority VARCHAR(20) NOT NULL DEFAULT 'medium'")
+                )
+        if "position" not in task_columns:
+            with db.engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE task ADD COLUMN position FLOAT DEFAULT 0.0")
                 )
 
     return app

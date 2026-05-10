@@ -150,6 +150,39 @@ def test_api_delete_task_not_found(auth):
     assert resp.status_code == 404
 
 
+def test_api_add_task_with_in_progress_status(auth):
+    resp = auth.post("/tasks", json={
+        "title": "In progress task",
+        "status": "in_progress",
+    })
+    assert resp.status_code == 201
+    data = resp.get_json()
+    assert data["task"]["status"] == "todo"
+
+
+def test_api_update_task_to_in_progress(auth):
+    created = auth.post("/tasks", json={"title": "Start task"}).get_json()
+    tid = created["task"]["id"]
+    resp = auth.put(f"/tasks/{tid}", json={"status": "in_progress"})
+    assert resp.status_code == 200
+    assert resp.get_json()["task"]["status"] == "in_progress"
+
+
+def test_api_get_tasks_filter_by_in_progress(auth):
+    auth.post("/tasks", json={"title": "Task one"})
+    t = auth.post("/tasks", json={"title": "In prog"}).get_json()
+    auth.put(f"/tasks/{t['task']['id']}", json={"status": "in_progress"})
+    resp = auth.get("/tasks?status=in_progress")
+    assert len(resp.get_json()["tasks"]) == 1
+    assert resp.get_json()["tasks"][0]["title"] == "In prog"
+
+
+def test_api_get_tasks_filter_by_invalid_status(auth):
+    auth.post("/tasks", json={"title": "Visible"})
+    resp = auth.get("/tasks?status=invalid")
+    assert len(resp.get_json()["tasks"]) == 1
+
+
 def test_api_get_tasks_filter_by_priority(auth):
     auth.post("/tasks", json={"title": "High", "priority": "high"})
     auth.post("/tasks", json={"title": "Low", "priority": "low"})

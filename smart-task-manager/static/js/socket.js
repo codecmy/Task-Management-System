@@ -23,14 +23,15 @@
 
   function updateStats(stats) {
     if (!statsGrid) return;
+    var activeCount = (stats.todo || 0) + (stats.in_progress || 0);
     statsGrid.innerHTML =
       '<div><span>Portfolio</span><strong>' + stats.total + '</strong></div>' +
-      '<div><span>Active work</span><strong>' + stats.todo + '</strong></div>' +
+      '<div><span>Active work</span><strong>' + activeCount + '</strong></div>' +
       '<div><span>Completed</span><strong>' + stats.done + '</strong></div>' +
       '<div><span>Critical focus</span><strong>' + stats.high + '</strong></div>';
     var subtitle = document.getElementById("dashboard-subtitle");
     if (subtitle) {
-      subtitle.textContent = stats.total + " items tracked, " + stats.todo + " active, " + stats.done + " completed";
+      subtitle.textContent = stats.total + " items tracked, " + activeCount + " active, " + stats.done + " completed";
     }
   }
 
@@ -50,7 +51,8 @@
 
   function buildTaskCard(task) {
     var article = document.createElement("article");
-    article.className = "task" + (task.status === "done" ? " done" : "") + " priority-" + task.priority;
+    var statusClass = task.status === "done" ? " done" : task.status === "in_progress" ? " in-progress" : "";
+    article.className = "task" + statusClass + " priority-" + task.priority;
     article.dataset.taskId = String(task.id);
     article.dataset.status = task.status;
     article.dataset.priority = task.priority;
