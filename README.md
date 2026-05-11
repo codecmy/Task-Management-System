@@ -74,7 +74,6 @@ A full-stack task manager built with Flask, featuring real-time WebSocket update
 
 ```bash
 # 1. Clone and enter the project
-cd smart-task-manager
 
 # 2. Create a virtual environment
 python -m venv venv
@@ -105,7 +104,9 @@ PostgreSQL is configured with user `smarttask`, database `smart_tasks`.
 ## Running Tests
 
 ```bash
-pytest -v        # 131 tests
+$env:PYTHONPATH = "$(Get-Location)"   # Windows PowerShell
+PYTHONPATH=. pytest -v                # macOS / Linux
+
 pytest --cov     # with coverage report
 ```
 
@@ -134,7 +135,6 @@ All API endpoints require authentication (session cookie).
 ## Project Structure
 
 ```
-smart-task-manager/
 ├── app.py              # Flask application + routes
 ├── analytics.py        # Pandas/NumPy analytics functions
 ├── models.py           # SQLAlchemy models (User, Task)
