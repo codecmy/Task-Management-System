@@ -25,7 +25,7 @@ def create_app():
     login_manager.login_view = "login"
     login_manager.login_message_category = "warning"
 
-    from analytics import get_task_analytics
+    from analytics import get_task_analytics, compute_all_user_scores, get_percentile
     from models import Task, TaskPriority, TaskStatus, User
 
     @login_manager.unauthorized_handler
@@ -157,6 +157,8 @@ def create_app():
             "due_date": task.due_date.isoformat() if task.due_date else None,
             "created_at": task.created_at.isoformat(),
             "updated_at": task.updated_at.isoformat(),
+            "position": task.position if task.position is not None else 0.0,
+            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         }
 
     def emit_user_event(event, task_dict=None):
@@ -307,6 +309,8 @@ def create_app():
         status_filter = request.args.get("status", "all").lower()
         priority_filter = request.args.get("priority", "all").lower()
         search = request.args.get("q", "").strip()
+        completed_after = request.args.get("completed_after")
+        completed_before = request.args.get("completed_before")
         task_query = Task.query.filter_by(user_id=current_user.id)
         all_user_tasks = task_query.all()
 
@@ -321,6 +325,11 @@ def create_app():
             task_query = task_query.filter(
                 or_(Task.title.ilike(pattern), Task.description.ilike(pattern))
             )
+
+        if completed_after:
+            task_query = task_query.filter(Task.completed_at >= completed_after)
+        if completed_before:
+            task_query = task_query.filter(Task.completed_at <= completed_before + "T23:59:59")
 
         tasks = task_query.order_by(
             case(
@@ -366,6 +375,10 @@ def create_app():
     def toggle_task(task_id):
         task = Task.query.filter_by(id=task_id, user_id=current_user.id).first_or_404()
         task.status = TaskStatus.TODO.value if task.is_done else TaskStatus.DONE.value
+        if task.status == TaskStatus.DONE.value:
+            task.completed_at = datetime.utcnow()
+        else:
+            task.completed_at = None
         db.session.commit()
         emit_user_event("task_updated", task_to_dict(task))
         flash("Task updated.", "success")
@@ -539,6 +552,10 @@ def create_app():
                 task.status = normalize_status(data["status"])
             except ValueError as error:
                 return jsonify({"error": str(error)}), 400
+            if task.status == TaskStatus.DONE.value:
+                task.completed_at = datetime.utcnow()
+            elif task.completed_at is not None:
+                task.completed_at = None
 
         db.session.commit()
         emit_user_event("task_updated", task_to_dict(task))
@@ -621,6 +638,40 @@ def create_app():
         emit_user_event("task_moved", task_to_dict(task))
         return jsonify({"message": "Task reordered", "task": task_to_dict(task)})
 
+    @app.route("/api/tasks/reindex", methods=["POST"])
+    @login_required
+    def api_reindex_tasks():
+        try:
+            data = get_json_payload()
+        except ValueError as error:
+            return jsonify({"error": str(error)}), 400
+
+        column_key = data.get("column_key")
+        task_ids = data.get("task_ids")
+
+        if not column_key or not isinstance(column_key, str):
+            return jsonify({"error": "column_key is required"}), 400
+        if column_key not in {TaskStatus.TODO.value, TaskStatus.IN_PROGRESS.value, TaskStatus.DONE.value}:
+            return jsonify({"error": "invalid column_key"}), 400
+        if not isinstance(task_ids, list):
+            return jsonify({"error": "task_ids must be a list"}), 400
+
+        tasks = Task.query.filter(
+            Task.id.in_(task_ids),
+            Task.user_id == current_user.id,
+        ).all()
+
+        if len(tasks) != len(task_ids):
+            return jsonify({"error": "One or more tasks not found"}), 404
+
+        task_map = {str(t.id): t for t in tasks}
+        for i, tid in enumerate(task_ids):
+            task = task_map.get(str(tid))
+            if task:
+                task.position = float(i)
+        db.session.commit()
+        return jsonify({"message": "Re-indexed", "count": len(tasks)})
+
     # ─── Analytics routes ───────────────────────────────────────────
 
     @app.route("/analytics")
@@ -628,13 +679,19 @@ def create_app():
     def analytics_view():
         tasks = Task.query.filter_by(user_id=current_user.id).all()
         analytics = get_task_analytics(tasks)
-        return render_template("analytics.html", analytics=analytics)
+        all_scores = compute_all_user_scores(User, Task)
+        percentile = get_percentile(analytics["productivity_score"], all_scores)
+        return render_template("analytics.html", analytics=analytics, percentile=percentile)
 
     @app.route("/api/analytics")
     @login_required
     def api_analytics():
         tasks = Task.query.filter_by(user_id=current_user.id).all()
         analytics = get_task_analytics(tasks)
+        all_scores = compute_all_user_scores(User, Task)
+        analytics["percentile"] = get_percentile(
+            analytics["productivity_score"], all_scores
+        )
         return jsonify(analytics)
 
     @app.route("/api/kanban")
@@ -658,6 +715,11 @@ def create_app():
             with db.engine.begin() as connection:
                 connection.execute(
                     text("ALTER TABLE task ADD COLUMN position FLOAT DEFAULT 0.0")
+                )
+        if "completed_at" not in task_columns:
+            with db.engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE task ADD COLUMN completed_at TIMESTAMP")
                 )
 
     return app

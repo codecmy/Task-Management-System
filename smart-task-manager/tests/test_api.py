@@ -346,3 +346,76 @@ def test_reorder_task_no_position(auth):
 def test_reorder_task_not_found(auth):
     resp = auth.put("/tasks/99999/reorder", json={"position": 0.0})
     assert resp.status_code == 404
+
+
+# ─── Re-index tests ─────────────────────────────────────────────────
+
+
+def test_reindex_requires_auth(client):
+    resp = client.post("/api/tasks/reindex", json={
+        "column_key": "todo",
+        "task_ids": [1],
+    })
+    assert resp.status_code == 401
+    assert resp.is_json
+
+
+def test_reindex_success(auth):
+    t1 = auth.post("/tasks", json={"title": "A"}).get_json()["task"]
+    t2 = auth.post("/tasks", json={"title": "B"}).get_json()["task"]
+    t3 = auth.post("/tasks", json={"title": "C"}).get_json()["task"]
+    resp = auth.post("/api/tasks/reindex", json={
+        "column_key": "todo",
+        "task_ids": [t1["id"], t2["id"], t3["id"]],
+    })
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["message"] == "Re-indexed"
+    assert data["count"] == 3
+
+
+def test_reindex_missing_column_key(auth):
+    resp = auth.post("/api/tasks/reindex", json={"task_ids": [1]})
+    assert resp.status_code == 400
+
+
+def test_reindex_invalid_column_key(auth):
+    resp = auth.post("/api/tasks/reindex", json={
+        "column_key": "invalid",
+        "task_ids": [1],
+    })
+    assert resp.status_code == 400
+
+
+def test_reindex_task_ids_not_list(auth):
+    resp = auth.post("/api/tasks/reindex", json={
+        "column_key": "todo",
+        "task_ids": "not-a-list",
+    })
+    assert resp.status_code == 400
+
+
+def test_reindex_task_not_found(auth):
+    resp = auth.post("/api/tasks/reindex", json={
+        "column_key": "todo",
+        "task_ids": [99999],
+    })
+    assert resp.status_code == 404
+
+
+def test_reindex_positions_sequential(auth):
+    t1 = auth.post("/tasks", json={"title": "X"}).get_json()["task"]
+    t2 = auth.post("/tasks", json={"title": "Y"}).get_json()["task"]
+    auth.put(f"/tasks/{t1['id']}/reorder", json={"position": 10.0})
+    auth.put(f"/tasks/{t2['id']}/reorder", json={"position": 20.0})
+    auth.post("/api/tasks/reindex", json={
+        "column_key": "todo",
+        "task_ids": [t1["id"], t2["id"]],
+    })
+    resp = auth.get("/tasks")
+    tasks = resp.get_json()["tasks"]
+    for t in tasks:
+        if t["id"] == t1["id"]:
+            assert t["position"] == 0.0
+        if t["id"] == t2["id"]:
+            assert t["position"] == 1.0

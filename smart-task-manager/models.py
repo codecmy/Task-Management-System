@@ -47,6 +47,7 @@ class Task(db.Model):
     priority = db.Column(db.String(20), default=TaskPriority.MEDIUM.value, nullable=False)
     due_date = db.Column(db.Date, nullable=True)
     position = db.Column(db.Float, default=0.0)
+    completed_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(
         db.DateTime,

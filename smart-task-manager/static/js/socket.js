@@ -171,6 +171,7 @@
     var card = buildKanbanCard(task);
     container.appendChild(card);
     updateColumnCounts();
+    updateDropZones();
   }
 
   function removeFromBoard(taskId) {
@@ -180,22 +181,7 @@
       }
     });
     updateColumnCounts();
-  }
-
-  function updateCardInBoard(task) {
-    var card = document.querySelector('.kanban-card[data-task-id="' + task.id + '"]');
-    if (card) {
-      var columnKey = task.status;
-      var container = getCardsContainer(columnKey);
-      if (container && container !== card.parentNode) {
-        removeFromBoard(task.id);
-        insertIntoColumn(task, columnKey);
-      } else {
-        var newCard = buildKanbanCard(task);
-        card.replaceWith(newCard);
-      }
-      updateColumnCounts();
-    }
+    updateDropZones();
   }
 
   function moveCardOnBoard(taskId, sourceCol, targetCol, position) {
@@ -210,6 +196,7 @@
     }
     targetContainer.appendChild(card);
     updateColumnCounts();
+    updateDropZones();
   }
 
   // ─── Flat List Operations ────────────────────────────────────────
@@ -294,6 +281,7 @@
       kanbanBoard.appendChild(columnDiv);
     });
     initSortable();
+    updateDropZones();
   }
 
   // ─── Drag & Drop ─────────────────────────────────────────────────
@@ -318,7 +306,24 @@
         animation: 200,
         ghostClass: "kanban-card-ghost",
         dragClass: "kanban-card-dragging",
+        scroll: true,
+        scrollSensitivity: 30,
+        forceFallback: false,
+        onMove: function (evt) {
+          document.querySelectorAll(".kanban-column").forEach(function (c) {
+            c.classList.remove("drag-over");
+          });
+          var targetCol = evt.to ? evt.to.closest(".kanban-column") : null;
+          if (targetCol && evt.to.querySelectorAll(".kanban-card").length === 0) {
+            targetCol.classList.add("drag-over");
+          }
+          return true;
+        },
         onEnd: function (evt) {
+          document.querySelectorAll(".kanban-column").forEach(function (c) {
+            c.classList.remove("drag-over");
+          });
+
           var taskId = evt.item.dataset.taskId;
           var targetCol = evt.to.closest(".kanban-column").dataset.column;
           var isSameCol = evt.from === evt.to;
@@ -326,18 +331,92 @@
 
           if (isSameCol && evt.oldIndex === evt.newIndex) return;
 
+          var origFrom = evt.from;
+          var origIndex = evt.oldIndex;
+          var origStatus = evt.item.dataset.status;
+
           evt.item.dataset.position = String(position);
 
           var url = isSameCol ? "/tasks/" + taskId + "/reorder" : "/tasks/" + taskId + "/move";
-          var body = isSameCol ? JSON.stringify({ position: position }) : JSON.stringify({ status: targetCol, position: position });
+          var body = isSameCol
+            ? JSON.stringify({ position: position })
+            : JSON.stringify({ status: targetCol, position: position });
 
           fetch(url, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: body,
+          }).then(function (resp) {
+            if (!resp.ok) throw new Error("Move failed");
+            checkReindex(evt.to);
+            updateDropZones();
+          }).catch(function () {
+            if (isSameCol) {
+              var refCard = origFrom.children[origIndex];
+              if (refCard) {
+                origFrom.insertBefore(evt.item, refCard);
+              } else {
+                origFrom.appendChild(evt.item);
+              }
+            } else {
+              if (origFrom.children[origIndex]) {
+                origFrom.insertBefore(evt.item, origFrom.children[origIndex]);
+              } else {
+                origFrom.appendChild(evt.item);
+              }
+            }
+            evt.item.dataset.status = origStatus;
+            evt.item.style.opacity = "0.5";
+            setTimeout(function () { evt.item.style.opacity = ""; }, 400);
+            updateColumnCounts();
+            updateDropZones();
           });
         },
       });
+    });
+  }
+
+  var reindexMoveCount = 0;
+
+  function checkReindex(container) {
+    var cards = container.querySelectorAll(".kanban-card");
+    if (cards.length < 2) return;
+    reindexMoveCount++;
+    var needsReindex = false;
+    for (var i = 1; i < cards.length; i++) {
+      var gap = parseFloat(cards[i].dataset.position) - parseFloat(cards[i - 1].dataset.position);
+      if (gap > 0 && gap < 0.001) {
+        needsReindex = true;
+        break;
+      }
+    }
+    if (needsReindex || reindexMoveCount >= 20) {
+      var columnKey = container.closest(".kanban-column").dataset.column;
+      var taskIds = Array.from(cards).map(function (c) {
+        return parseInt(c.dataset.taskId);
+      });
+      fetch("/api/tasks/reindex", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ column_key: columnKey, task_ids: taskIds }),
+      }).then(function (resp) {
+        if (resp.ok) {
+          cards.forEach(function (card, idx) {
+            card.dataset.position = String(idx);
+          });
+        }
+      });
+      reindexMoveCount = 0;
+    }
+  }
+
+  function updateDropZones() {
+    document.querySelectorAll(".kanban-column").forEach(function (col) {
+      var cards = col.querySelectorAll(".kanban-card");
+      var zone = col.querySelector(".kanban-drop-zone");
+      if (zone) {
+        zone.style.display = cards.length === 0 ? "block" : "none";
+      }
     });
   }
 
@@ -394,7 +473,7 @@
 
   function initSidebar() {
     var stored = localStorage.getItem("kanban-sidebar");
-    if (stored === "expanded") {
+    if (stored !== "collapsed") {
       if (taskForm) {
         taskForm.classList.remove("sidebar-collapsed");
         taskForm.classList.add("sidebar-expanded");
@@ -403,10 +482,15 @@
     if (sidebarToggle) {
       sidebarToggle.addEventListener("click", function () {
         if (taskForm) {
+          var wasCollapsed = taskForm.classList.contains("sidebar-collapsed");
           taskForm.classList.toggle("sidebar-collapsed");
           taskForm.classList.toggle("sidebar-expanded");
           localStorage.setItem("kanban-sidebar",
             taskForm.classList.contains("sidebar-expanded") ? "expanded" : "collapsed");
+          if (wasCollapsed) {
+            var titleInput = taskForm.querySelector("input[name='title']");
+            if (titleInput) setTimeout(function () { titleInput.focus(); }, 300);
+          }
         }
       });
     }
@@ -473,4 +557,5 @@
   initSortable();
   initSidebar();
   initViewToggles();
+  updateDropZones();
 })();
